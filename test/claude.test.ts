@@ -235,9 +235,34 @@ describe('model validation', () => {
 });
 
 describe('checkClaudeAvailable', () => {
-  it('should return true when claude exists', async () => {
-    // The real claude is in PATH
-    const available = await checkClaudeAvailable();
-    assert.strictEqual(available, true);
+  it('should return true when claude exists in PATH', async () => {
+    // Create a fake claude in a temp dir
+    const tmpDir2 = join(tmpdir(), `claude-avail-${randomUUID().slice(0, 8)}`);
+    mkdirSync(tmpDir2, { recursive: true });
+    const scriptPath = join(tmpDir2, 'claude');
+    writeFileSync(scriptPath, '#!/bin/bash\necho ok', { mode: 0o755 });
+    const origPath = process.env.PATH ?? '';
+    process.env.PATH = `${tmpDir2}:${origPath}`;
+    try {
+      const available = await checkClaudeAvailable();
+      assert.strictEqual(available, true);
+    } finally {
+      process.env.PATH = origPath;
+      try { unlinkSync(scriptPath); } catch { /* */ }
+    }
+  });
+
+  it('should return false when claude is not in PATH', async () => {
+    // Use an empty temp dir as sole PATH entry — guarantees no claude
+    const emptyDir = join(tmpdir(), `empty-path-${randomUUID().slice(0, 8)}`);
+    mkdirSync(emptyDir, { recursive: true });
+    const origPath = process.env.PATH ?? '';
+    process.env.PATH = emptyDir;
+    try {
+      const available = await checkClaudeAvailable();
+      assert.strictEqual(available, false);
+    } finally {
+      process.env.PATH = origPath;
+    }
   });
 });
