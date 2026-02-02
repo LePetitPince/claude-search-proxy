@@ -1,0 +1,4 @@
+{
+  "id": "claude-search-proxy",
+  "services": ["claude-search-proxy"]
+}

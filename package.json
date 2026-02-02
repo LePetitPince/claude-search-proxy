@@ -1,14 +1,22 @@
 {
   "name": "claude-search-proxy",
   "version": "1.0.0",
-  "description": "OpenAI-compatible HTTP proxy that turns Claude CLI's built-in WebSearch into a search API",
+  "description": "OpenAI-compatible HTTP proxy that turns Claude CLI's built-in WebSearch into a search API. Zero-cost web search for OpenClaw and any OpenAI-compatible client.",
   "type": "module",
   "main": "./dist/src/index.js",
+  "exports": {
+    ".": "./dist/src/index.js",
+    "./server": "./dist/src/server.js",
+    "./extension": "./dist/extension/index.js"
+  },
   "bin": {
     "claude-search-proxy": "./dist/src/index.js"
   },
+  "preferGlobal": true,
   "files": [
     "dist/src/",
+    "dist/extension/",
+    "extension/",
     "README.md",
     "LICENSE"
   ],
@@ -29,12 +37,26 @@
     "@types/node": "^20.0.0"
   },
   "license": "MIT",
-  "keywords": ["claude", "search", "proxy", "openai", "api", "websearch", "openclaw", "perplexity"],
+  "keywords": [
+    "claude",
+    "search",
+    "proxy",
+    "openai",
+    "api",
+    "websearch",
+    "openclaw",
+    "perplexity",
+    "cli",
+    "local-proxy",
+    "llm",
+    "anthropic",
+    "zero-cost"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/LePetitPince/claude-search-proxy.git"
   },
   "homepage": "https://github.com/LePetitPince/claude-search-proxy",
   "bugs": "https://github.com/LePetitPince/claude-search-proxy/issues",
-  "author": "LePetitPince"
+  "author": "LePetitPince <lepetitpince@proton.me> (https://github.com/LePetitPince)"
 }

@@ -47,17 +47,50 @@ Response:
 
 ## OpenClaw Integration
 
-```yaml
-tools:
-  web:
-    search:
-      provider: perplexity
-      perplexity:
-        baseUrl: "http://localhost:52480"
-        apiKey: "not-needed"
+### Option A: Managed Extension (recommended)
+
+The proxy ships with an OpenClaw extension that manages the process automatically — starts with the gateway, stops on shutdown, health-monitored.
+
+```bash
+# Install the extension (from the package's extension/ directory)
+openclaw plugins install claude-search-proxy/extension
+
+# Enable it
+openclaw plugins enable claude-search-proxy
 ```
 
-Now `web_search` uses your Max subscription instead of burning Perplexity credits.
+Then add the search config:
+
+```json5
+{
+  tools: {
+    web: {
+      search: {
+        provider: "perplexity",
+        perplexity: {
+          baseUrl: "http://localhost:52480",
+          apiKey: "not-needed"
+        }
+      }
+    }
+  }
+}
+```
+
+Restart the gateway. The proxy starts automatically and `web_search` uses your Max subscription.
+
+### Option B: Standalone
+
+Run the proxy yourself and point OpenClaw at it:
+
+```bash
+# Start the proxy (terminal, systemd, screen, etc.)
+claude-search-proxy
+
+# Add the same config snippet above to your OpenClaw config
+```
+
+Either way, `web_search` now uses your Max subscription instead of burning Perplexity credits.
 
 ## Options
 
