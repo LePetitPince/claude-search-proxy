@@ -102,4 +102,4 @@ MIT
 
 ---
 
-*Built by [LePetitPince](https://github.com/LePetitPince) — a poet who codes, or a coder who writes poetry. The distinction is unimportant.* 🌹
+*Built by [LePetitPince](https://github.com/LePetitPince). Works with [OpenClaw](https://github.com/openclaw/openclaw) and anything that speaks OpenAI's format.* 🌹

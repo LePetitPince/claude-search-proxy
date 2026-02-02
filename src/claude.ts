@@ -4,6 +4,10 @@
 
 import { spawn, type ChildProcess } from 'child_process';
 import type { ClaudeResult } from './types.js';
+import { MODEL_NAME_RE } from './types.js';
+
+/** Grace period before escalating SIGTERM → SIGKILL (ms) */
+const KILL_GRACE_MS = 5_000;
 
 /**
  * Options for executing Claude CLI
@@ -19,8 +23,8 @@ interface ClaudeExecutionOptions {
 }
 
 /**
- * Execute Claude CLI with proper stdin handling and error management
- * CRITICAL: stdin must be piped and closed, or the process hangs forever
+ * Execute Claude CLI with proper stdin handling and error management.
+ * CRITICAL: stdin must be piped and closed, or the process hangs forever.
  */
 export async function executeClaude(options: ClaudeExecutionOptions): Promise<ClaudeResult> {
   const {
@@ -33,13 +37,12 @@ export async function executeClaude(options: ClaudeExecutionOptions): Promise<Cl
     verbose
   } = options;
 
-  // Build Claude CLI arguments
-  const args = buildClaudeArgs({
-    sessionId,
-    isFirstSearch,
-    systemPrompt,
-    model
-  });
+  // Validate model name to prevent flag injection
+  if (!MODEL_NAME_RE.test(model)) {
+    throw new Error('Invalid model name: must contain only alphanumeric characters, hyphens, dots, and underscores');
+  }
+
+  const args = buildClaudeArgs({ sessionId, isFirstSearch, systemPrompt, model });
 
   if (verbose) {
     console.error(`[Claude] Executing: claude ${args.join(' ')}`);
@@ -49,82 +52,88 @@ export async function executeClaude(options: ClaudeExecutionOptions): Promise<Cl
   return new Promise<ClaudeResult>((resolve, reject) => {
     let stdout = '';
     let stderr = '';
-    let timeoutHandle: NodeJS.Timeout;
+    let settled = false;
 
-    // Spawn Claude process
+    const settle = (fn: () => void) => {
+      if (!settled) { settled = true; fn(); }
+    };
+
     const child: ChildProcess = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe']
     });
 
-    // Set up timeout
-    timeoutHandle = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error(`Claude CLI timeout after ${timeout}ms`));
+    // Timeout with SIGTERM → SIGKILL escalation
+    const timeoutHandle = setTimeout(() => {
+      killGracefully(child);
+      settle(() => reject(new Error(`Claude CLI timeout after ${timeout}ms`)));
     }, timeout);
 
-    // Handle stdout
-    child.stdout?.on('data', (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    // Handle stderr
+    child.stdout?.on('data', (data: Buffer) => { stdout += data.toString(); });
     child.stderr?.on('data', (data: Buffer) => {
       stderr += data.toString();
-      if (verbose) {
-        console.error(`[Claude stderr] ${data.toString().trim()}`);
-      }
+      if (verbose) console.error(`[Claude stderr] ${data.toString().trim()}`);
     });
 
-    // Handle process exit
     child.on('close', (code: number | null, signal: string | null) => {
       clearTimeout(timeoutHandle);
 
       if (verbose) {
-        console.error(`[Claude] Process exited with code ${code}, signal ${signal}`);
+        console.error(`[Claude] Exited code=${code} signal=${signal}`);
       }
 
-      if (code !== 0) {
-        reject(new Error(`Claude CLI exited with code ${code}. stderr: ${stderr}`));
+      if (code !== 0 && code !== null) {
+        // Log full details server-side, return sanitised message
+        console.error(`[Claude] CLI error (code ${code}): ${stderr.slice(0, 500)}`);
+        settle(() => reject(new Error('Claude CLI returned an error')));
         return;
       }
 
       if (signal) {
-        reject(new Error(`Claude CLI killed by signal ${signal}`));
+        settle(() => reject(new Error('Claude CLI was terminated')));
         return;
       }
 
-      // Parse JSON output
       try {
         const result = parseClaudeOutput(stdout);
-        
         if (result.is_error) {
-          reject(new Error(`Claude returned error: ${result.error || result.result}`));
+          console.error(`[Claude] Returned error: ${result.error ?? result.result}`);
+          settle(() => reject(new Error('Claude search failed')));
           return;
         }
-
-        resolve(result);
+        settle(() => resolve(result));
       } catch (error) {
-        reject(new Error(`Failed to parse Claude output: ${error}. Raw output: ${stdout.substring(0, 500)}`));
+        console.error(`[Claude] Parse failure: ${error}. Raw (500 chars): ${stdout.substring(0, 500)}`);
+        settle(() => reject(new Error('Failed to parse Claude response')));
       }
     });
 
-    // Handle spawn errors
     child.on('error', (error: Error) => {
       clearTimeout(timeoutHandle);
-      reject(new Error(`Failed to spawn Claude CLI: ${error.message}`));
+      console.error(`[Claude] Spawn error: ${error.message}`);
+      settle(() => reject(new Error('Failed to start Claude CLI')));
     });
 
     // CRITICAL: Write query to stdin and close it
-    // If stdin remains open/attached to terminal, the process hangs forever
     if (child.stdin) {
       child.stdin.write(query);
-      child.stdin.end(); // Must close stdin!
+      child.stdin.end();
     } else {
       clearTimeout(timeoutHandle);
       child.kill();
-      reject(new Error('Failed to access Claude CLI stdin'));
+      settle(() => reject(new Error('Failed to access Claude CLI stdin')));
     }
   });
+}
+
+/**
+ * Kill a child process gracefully: SIGTERM first, SIGKILL after grace period.
+ */
+function killGracefully(child: ChildProcess): void {
+  child.kill('SIGTERM');
+  const forceKill = setTimeout(() => {
+    try { child.kill('SIGKILL'); } catch { /* already dead */ }
+  }, KILL_GRACE_MS);
+  child.on('exit', () => clearTimeout(forceKill));
 }
 
 /**
@@ -139,20 +148,16 @@ function buildClaudeArgs(options: {
   const { sessionId, isFirstSearch, systemPrompt, model } = options;
 
   const args = [
-    '-p',  // Prompt mode (non-interactive)
+    '-p',
     '--output-format', 'json',
     '--allowedTools', 'WebSearch',
     '--model', model
-    // NOTE: Do NOT use --no-session-persistence — it prevents --resume from working.
-    // Sessions persist to ~/.claude/ which is needed for prompt caching.
   ];
 
   if (isFirstSearch) {
-    // First search: establish session with system prompt
     args.push('--session-id', sessionId);
     args.push('--append-system-prompt', systemPrompt);
   } else {
-    // Subsequent searches: resume existing session (prompt cached)
     args.push('--resume', sessionId);
   }
 
@@ -164,26 +169,17 @@ function buildClaudeArgs(options: {
  */
 function parseClaudeOutput(stdout: string): ClaudeResult {
   const trimmed = stdout.trim();
-  
+
   if (!trimmed) {
     throw new Error('Empty output from Claude CLI');
   }
 
   try {
     const parsed = JSON.parse(trimmed);
-    
-    // Validate required fields
-    if (typeof parsed.type !== 'string') {
-      throw new Error('Missing or invalid "type" field');
-    }
-    
-    if (typeof parsed.is_error !== 'boolean') {
-      throw new Error('Missing or invalid "is_error" field');
-    }
-    
-    if (typeof parsed.result !== 'string') {
-      throw new Error('Missing or invalid "result" field');
-    }
+
+    if (typeof parsed.type !== 'string') throw new Error('Missing "type" field');
+    if (typeof parsed.is_error !== 'boolean') throw new Error('Missing "is_error" field');
+    if (typeof parsed.result !== 'string') throw new Error('Missing "result" field');
 
     return parsed as ClaudeResult;
   } catch (error) {
@@ -202,13 +198,7 @@ export async function checkClaudeAvailable(): Promise<boolean> {
     const child = spawn('which', ['claude'], {
       stdio: ['ignore', 'pipe', 'pipe']
     });
-
-    child.on('close', (code) => {
-      resolve(code === 0);
-    });
-
-    child.on('error', () => {
-      resolve(false);
-    });
+    child.on('close', (code) => resolve(code === 0));
+    child.on('error', () => resolve(false));
   });
 }

@@ -3,14 +3,22 @@
   "version": "1.0.0",
   "description": "OpenAI-compatible HTTP proxy that turns Claude CLI's built-in WebSearch into a search API",
   "type": "module",
+  "main": "./dist/src/index.js",
   "bin": {
-    "claude-search-proxy": "./dist/index.js"
+    "claude-search-proxy": "./dist/src/index.js"
   },
+  "files": [
+    "dist/src/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "build:test": "tsc -p tsconfig.test.json",
     "test": "tsc -p tsconfig.test.json && node --test dist/test/*.test.js",
-    "start": "node dist/index.js"
+    "start": "node dist/src/index.js",
+    "prepare": "npm run build",
+    "prepack": "npm run build"
   },
   "engines": {
     "node": ">=18"
@@ -21,10 +29,12 @@
     "@types/node": "^20.0.0"
   },
   "license": "MIT",
-  "keywords": ["claude", "search", "proxy", "openai", "api", "websearch"],
+  "keywords": ["claude", "search", "proxy", "openai", "api", "websearch", "openclaw", "perplexity"],
   "repository": {
-    "type": "git", 
+    "type": "git",
     "url": "https://github.com/LePetitPince/claude-search-proxy.git"
   },
+  "homepage": "https://github.com/LePetitPince/claude-search-proxy",
+  "bugs": "https://github.com/LePetitPince/claude-search-proxy/issues",
   "author": "LePetitPince"
 }

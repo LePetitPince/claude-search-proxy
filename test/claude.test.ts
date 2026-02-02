@@ -113,7 +113,7 @@ describe('executeClaude (with fake CLI)', () => {
         timeout: 10000,
         verbose: false
       }),
-      /Claude CLI exited with code 1/
+      /Claude CLI returned an error/
     );
   });
 
@@ -130,7 +130,7 @@ describe('executeClaude (with fake CLI)', () => {
         timeout: 10000,
         verbose: false
       }),
-      /Failed to parse Claude output/
+      /Failed to parse Claude response/
     );
   });
 
@@ -147,7 +147,7 @@ describe('executeClaude (with fake CLI)', () => {
         timeout: 10000,
         verbose: false
       }),
-      /Claude returned error: Rate limited/
+      /Claude search failed/
     );
   });
 
@@ -166,6 +166,71 @@ describe('executeClaude (with fake CLI)', () => {
       }),
       /Claude CLI timeout/
     );
+  });
+});
+
+describe('model validation', () => {
+  it('should reject model names with spaces (flag injection)', async () => {
+    await assert.rejects(
+      () => executeClaude({
+        query: 'test',
+        sessionId: 'test',
+        isFirstSearch: true,
+        systemPrompt: 'test',
+        model: 'sonnet --session-id /tmp/evil',
+        timeout: 10000,
+        verbose: false
+      }),
+      /Invalid model name/
+    );
+  });
+
+  it('should reject model names with special characters', async () => {
+    await assert.rejects(
+      () => executeClaude({
+        query: 'test',
+        sessionId: 'test',
+        isFirstSearch: true,
+        systemPrompt: 'test',
+        model: 'model;rm -rf /',
+        timeout: 10000,
+        verbose: false
+      }),
+      /Invalid model name/
+    );
+  });
+
+  it('should accept valid model names', async () => {
+    // This will fail because there's no real claude, but it should get past validation
+    // The error should NOT be about model name
+    const tmpDir2 = join(tmpdir(), `claude-model-test-${randomUUID().slice(0, 8)}`);
+    mkdirSync(tmpDir2, { recursive: true });
+    const origPath = process.env.PATH ?? '';
+    
+    // Create a success fake claude
+    const scriptPath = join(tmpDir2, 'claude');
+    writeFileSync(scriptPath, [
+      '#!/bin/bash',
+      'cat > /dev/null',
+      'echo \'{"type":"result","is_error":false,"duration_ms":1,"result":"ok","session_id":"s","total_cost_usd":0}\'',
+    ].join('\n'), { mode: 0o755 });
+    
+    process.env.PATH = `${tmpDir2}:${origPath}`;
+    try {
+      const result = await executeClaude({
+        query: 'test',
+        sessionId: 'test',
+        isFirstSearch: true,
+        systemPrompt: 'test',
+        model: 'claude-sonnet-4-20250514',
+        timeout: 10000,
+        verbose: false
+      });
+      assert.strictEqual(result.is_error, false);
+    } finally {
+      process.env.PATH = origPath;
+      try { unlinkSync(scriptPath); } catch { /* */ }
+    }
   });
 });
 

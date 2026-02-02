@@ -2,6 +2,26 @@
  * TypeScript type definitions for claude-search-proxy
  */
 
+/** Maximum request body size in bytes (1 MB) */
+export const MAX_BODY_BYTES = 1_048_576;
+
+/** Maximum query length in characters */
+export const MAX_QUERY_LENGTH = 10_000;
+
+/** Maximum queued requests before rejecting */
+export const MAX_QUEUE_SIZE = 50;
+
+/** Model name validation: alphanumeric, hyphens, dots, underscores only */
+export const MODEL_NAME_RE = /^[a-zA-Z0-9._-]+$/;
+
+/** Localhost addresses considered safe for binding */
+const LOCALHOST_ADDRS = new Set(['127.0.0.1', 'localhost', '::1']);
+
+/** Check whether a host string is a localhost address */
+export function isLocalhostAddr(host: string): boolean {
+  return LOCALHOST_ADDRS.has(host);
+}
+
 /**
  * Configuration options for the proxy server
  */

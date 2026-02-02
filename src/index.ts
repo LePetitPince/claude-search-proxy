@@ -6,6 +6,7 @@
  */
 
 import type { ProxyConfig } from './types.js';
+import { MODEL_NAME_RE, isLocalhostAddr } from './types.js';
 import { ProxyServer } from './server.js';
 import { checkClaudeAvailable } from './claude.js';
 
@@ -99,6 +100,10 @@ function parseArguments(): ProxyConfig {
           console.error('Error: --model requires a value');
           process.exit(1);
         }
+        if (!MODEL_NAME_RE.test(model)) {
+          console.error('Error: --model must contain only alphanumeric characters, hyphens, dots, and underscores');
+          process.exit(1);
+        }
         config.model = model;
         break;
 
@@ -165,6 +170,12 @@ async function main(): Promise<void> {
 
     if (config.verbose) {
       console.error('[Main] Configuration:', JSON.stringify(config, null, 2));
+    }
+
+    // Warn on non-localhost bind
+    if (!isLocalhostAddr(config.host)) {
+      console.error(`⚠️  Warning: Binding to ${config.host} exposes the proxy to the network.`);
+      console.error('   This proxy has no authentication. Use 127.0.0.1 (default) for local use.');
     }
 
     // Validate environment

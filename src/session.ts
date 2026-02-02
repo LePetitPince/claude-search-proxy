@@ -4,6 +4,7 @@
 
 import { randomUUID } from 'crypto';
 import type { SessionState, QueuedTask, ClaudeResult, ProxyConfig } from './types.js';
+import { MAX_QUEUE_SIZE } from './types.js';
 import { executeClaude } from './claude.js';
 
 /**
@@ -51,8 +52,13 @@ export class SessionManager {
 
   /**
    * Execute a search query. Queues requests to ensure sequential execution.
+   * Rejects immediately if the queue is full.
    */
   async execute(query: string): Promise<ClaudeResult> {
+    if (this.queue.length >= MAX_QUEUE_SIZE) {
+      throw new Error('Request queue full, try again later');
+    }
+
     return new Promise<ClaudeResult>((resolve, reject) => {
       const task: QueuedTask<ClaudeResult> = {
         execute: () => this.executeSearch(query),

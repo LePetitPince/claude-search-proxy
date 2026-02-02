@@ -170,4 +170,37 @@ describe('SessionManager', () => {
     assert.strictEqual(sm.getSessionInfo().sessionId, null);
     assert.strictEqual(sm.getSessionInfo().searchCount, 0);
   });
+
+  it('should reject when queue is full', async () => {
+    // Executor that blocks on a gate — fills the queue while first item processes
+    let resolveAll: (() => void) | null = null;
+    const gate = new Promise<void>(r => { resolveAll = r; });
+
+    const slowExecutor: ClaudeExecutor = async () => {
+      await gate;
+      return mockResult('delayed');
+    };
+    const sm = new SessionManager(baseConfig, slowExecutor);
+
+    // Item 1 gets shifted from queue and starts processing (awaiting gate).
+    // Items 2-51 sit in the queue (50 items = MAX_QUEUE_SIZE).
+    // Item 52 should be rejected.
+    const pending = [];
+    for (let i = 0; i < 51; i++) {
+      pending.push(sm.execute(`query ${i}`));
+    }
+
+    // Let the event loop tick so processQueue shifts item 1
+    await new Promise(r => setTimeout(r, 5));
+
+    // Now the queue has 50 items — next one should be rejected
+    await assert.rejects(
+      () => sm.execute('overflow'),
+      /Request queue full/
+    );
+
+    // Release the gate so all pending promises resolve cleanly
+    resolveAll!();
+    await Promise.all(pending);
+  });
 });
