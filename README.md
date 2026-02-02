@@ -2,7 +2,7 @@
 
 Turn your Claude Max subscription into a search API. Zero extra cost.
 
-A tiny HTTP proxy that wraps Claude CLI's built-in WebSearch tool and speaks OpenAI's `/v1/chat/completions` format. Drop it in wherever you'd use Perplexity Sonar — [OpenClaw](https://github.com/openclaw/openclaw), LangChain, or anything that talks to OpenAI-shaped endpoints.
+A tiny HTTP proxy that wraps Claude CLI's built-in WebSearch tool and speaks OpenAI's `/v1/chat/completions` format. Drop it into [OpenClaw](https://github.com/openclaw/openclaw), LangChain, or anything that talks to OpenAI-shaped endpoints — replace Perplexity, Brave, or whatever you're currently paying for with search you already have.
 
 ## Why
 
@@ -10,56 +10,29 @@ Claude Max ($200/mo) includes WebSearch at no additional charge. But the OAuth t
 
 **You get:** web search for your agent, no extra API keys or billing, using a subscription you're already paying for. Searches consume your Max plan's monthly token allowance — but you're not paying per-search on top of it.
 
-## Quick Start
+## OpenClaw Setup
+
+### Prerequisites
 
 ```bash
-# 1. Install Claude CLI (if you haven't already)
+# Install Claude CLI and authenticate with your Max subscription
 npm install -g @anthropic-ai/claude-code
-
-# 2. Authenticate with your Max subscription
 claude auth login
 
-# 3. Start the proxy
-npx claude-search-proxy
+# Install claude-search-proxy globally
+npm install -g claude-search-proxy
 ```
 
-Server starts on `localhost:52480`. Verify it works:
+### Install the Extension
+
+The proxy ships with an OpenClaw extension that manages everything — starts with the gateway, stops on shutdown, health-monitored.
 
 ```bash
-curl http://localhost:52480/health
+# Install and enable the extension
+openclaw plugins install --link $(npm root -g)/claude-search-proxy/extension
 ```
 
-## Usage
-
-```bash
-curl -X POST http://localhost:52480/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "latest humanoid robot news 2026"}]}'
-```
-
-Response:
-```json
-{
-  "choices": [{ "message": { "role": "assistant", "content": "..." } }],
-  "citations": ["https://...", "https://..."]
-}
-```
-
-## OpenClaw Integration
-
-### Option A: Managed Extension (recommended)
-
-The proxy ships with an OpenClaw extension that manages the process automatically — starts with the gateway, stops on shutdown, health-monitored.
-
-```bash
-# Install the extension (from the package's extension/ directory)
-openclaw plugins install claude-search-proxy/extension
-
-# Enable it
-openclaw plugins enable claude-search-proxy
-```
-
-Then add the search config:
+Add the search config to your `openclaw.json`:
 
 ```json5
 {
@@ -77,20 +50,42 @@ Then add the search config:
 }
 ```
 
-Restart the gateway. The proxy starts automatically and `web_search` uses your Max subscription.
+Restart the gateway. That's it — `web_search` now routes through Claude WebSearch.
 
-### Option B: Standalone
+> **Why `provider: "perplexity"`?** OpenClaw doesn't have a native `claude-search-proxy` provider yet. The proxy speaks the same OpenAI-compatible protocol as Perplexity Sonar, so we piggyback on that config path. It works seamlessly.
 
-Run the proxy yourself and point OpenClaw at it:
+### Verify
 
 ```bash
-# Start the proxy (terminal, systemd, screen, etc.)
-claude-search-proxy
-
-# Add the same config snippet above to your OpenClaw config
+curl http://localhost:52480/health
 ```
 
-Either way, `web_search` now uses your Max subscription instead of burning Perplexity credits.
+## Standalone Usage
+
+Don't use OpenClaw? The proxy works with anything that speaks OpenAI's chat completions format.
+
+```bash
+# Start the proxy
+npx claude-search-proxy
+```
+
+Server starts on `localhost:52480`. Send search queries:
+
+```bash
+curl -X POST http://localhost:52480/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "latest humanoid robot news 2026"}]}'
+```
+
+Response:
+```json
+{
+  "choices": [{ "message": { "role": "assistant", "content": "..." } }],
+  "citations": ["https://...", "https://..."]
+}
+```
+
+Point any OpenAI-compatible client at `http://localhost:52480` with `apiKey: "not-needed"`.
 
 ## Options
 
@@ -151,7 +146,7 @@ git clone https://github.com/LePetitPince/claude-search-proxy.git
 cd claude-search-proxy
 npm install
 npm run build        # compile TypeScript
-npm test             # 38 tests, no network calls
+npm test             # 49 tests, no network calls
 npm start            # run the server
 ```
 
@@ -161,4 +156,4 @@ MIT
 
 ---
 
-*Built by [LePetitPince](https://github.com/LePetitPince). Works with [OpenClaw](https://github.com/openclaw/openclaw) and anything that speaks OpenAI's format.* 🌹
+*Built by [LePetitPince](https://github.com/LePetitPince) 🌹*
