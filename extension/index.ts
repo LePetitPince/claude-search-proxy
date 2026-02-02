@@ -53,7 +53,7 @@ const plugin = {
   id: "claude-search-proxy",
   name: "Claude Search Proxy",
   description:
-    "Managed claude-search-proxy service — zero-cost web search via Claude CLI WebSearch",
+    "Managed claude-search-proxy service — zero-cost web search via any Claude subscription's WebSearch",
 
   configSchema: emptyPluginConfigSchema(),
 

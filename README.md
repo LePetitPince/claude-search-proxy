@@ -1,14 +1,14 @@
 # claude-search-proxy 🔍
 
-Turn your Claude Max subscription into a search API. Zero extra cost.
+Turn your Claude subscription into a search API. Zero extra cost.
 
 A tiny HTTP proxy that wraps Claude CLI's built-in WebSearch tool and speaks OpenAI's `/v1/chat/completions` format. Drop it into [OpenClaw](https://github.com/openclaw/openclaw), LangChain, or anything that talks to OpenAI-shaped endpoints — replace Perplexity, Brave, or whatever you're currently paying for with search you already have.
 
 ## Why
 
-Claude Max ($200/mo) includes WebSearch at no additional charge. But the OAuth tokens don't work with the Anthropic Messages API directly. This proxy bridges the gap: it shells out to `claude -p` (which handles OAuth internally) and returns search results in a format your tools already understand.
+Any Claude subscription — **Pro** ($20/mo), **Max** ($100–200/mo), **Teams**, or **Enterprise** — includes WebSearch through Claude Code at no additional charge. But the OAuth tokens don't work with the Anthropic Messages API directly. This proxy bridges the gap: it shells out to `claude -p` (which handles OAuth internally) and returns search results in a format your tools already understand.
 
-**You get:** web search for your agent, no extra API keys or billing, using a subscription you're already paying for. Searches consume your Max plan's monthly token allowance — but you're not paying per-search on top of it.
+**You get:** web search for your agent, no extra API keys or billing, using a subscription you're already paying for. Searches consume your plan's token allowance — but you're not paying per-search on top of it.
 
 ## OpenClaw Setup
 
