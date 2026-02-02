@@ -33,6 +33,7 @@ function createFakeClaude(dir: string, behavior: 'success' | 'error-exit' | 'bad
 
     case 'error-exit':
       script = `#!/bin/bash
+cat > /dev/null
 echo "Authentication failed" >&2
 exit 1`;
       break;
