@@ -28,8 +28,8 @@ npm install -g claude-search-proxy
 The proxy ships with an OpenClaw extension that manages everything — starts with the gateway, stops on shutdown, health-monitored.
 
 ```bash
-# Install and enable the extension
-openclaw plugins install --link $(npm root -g)/claude-search-proxy/extension
+# Link the extension into OpenClaw
+openclaw plugins install --link $(npm root -g)/claude-search-proxy
 ```
 
 Add the search config to your `openclaw.json`:
