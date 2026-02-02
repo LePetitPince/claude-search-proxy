@@ -1,38 +1,55 @@
 # claude-search-proxy 🔍
 
-Turn your Claude subscription into a search API. Zero extra cost.
+[![CI](https://github.com/LePetitPince/claude-search-proxy/actions/workflows/ci.yml/badge.svg)](https://github.com/LePetitPince/claude-search-proxy/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
-A tiny HTTP proxy that wraps Claude CLI's built-in WebSearch tool and speaks OpenAI's `/v1/chat/completions` format. Drop it into [OpenClaw](https://github.com/openclaw/openclaw), LangChain, or anything that talks to OpenAI-shaped endpoints — replace Perplexity, Brave, or whatever you're currently paying for with search you already have.
-
-## Why
-
-Any Claude subscription — **Pro** ($20/mo), **Max** ($100–200/mo), **Teams**, or **Enterprise** — includes WebSearch through Claude Code at no additional charge. But the OAuth tokens don't work with the Anthropic Messages API directly. This proxy bridges the gap: it shells out to `claude -p` (which handles OAuth internally) and returns search results in a format your tools already understand.
-
-**You get:** web search for your agent, no extra API keys or billing, using a subscription you're already paying for. Searches consume your plan's token allowance — but you're not paying per-search on top of it.
-
-## OpenClaw Setup
-
-### Prerequisites
+**You don't need to pay for a search API.** Your Claude subscription already includes web search — this proxy lets you actually use it.
 
 ```bash
-# Install Claude CLI and authenticate with your Max subscription
+npm install -g claude-search-proxy
+claude-search-proxy
+# → Search API running on localhost:52480
+```
+
+```bash
+curl -X POST http://localhost:52480/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"latest AI news"}]}'
+```
+
+That's it. OpenAI-compatible search endpoint, zero extra cost, zero dependencies.
+
+---
+
+## The Problem
+
+If you're building with AI, you're probably paying for search separately — Perplexity, Brave, SerpAPI, or OpenRouter credits. But any Claude subscription (**Pro**, **Max**, **Teams**, or **Enterprise**) already includes web search through Claude Code. There's just no API for it.
+
+This proxy creates that API. It wraps `claude -p --allowedTools WebSearch` in an OpenAI-compatible HTTP endpoint. Your tools don't know the difference — they see a standard `/v1/chat/completions` endpoint that returns search results with citations.
+
+## Quick Start
+
+```bash
+# Install Claude CLI and authenticate
 npm install -g @anthropic-ai/claude-code
 claude auth login
 
-# Install claude-search-proxy globally
+# Install and run
 npm install -g claude-search-proxy
+claude-search-proxy
 ```
 
-### Install the Extension
+## OpenClaw Integration
 
-The proxy ships with an OpenClaw extension that manages everything — starts with the gateway, stops on shutdown, health-monitored.
+Ships with a managed extension — the proxy starts and stops with your gateway automatically.
 
 ```bash
-# Link the extension into OpenClaw
+# Install the extension
 openclaw plugins install --link $(npm root -g)/claude-search-proxy
 ```
 
-Add the search config to your `openclaw.json`:
+Add to your `openclaw.json`:
 
 ```json5
 {
@@ -50,34 +67,16 @@ Add the search config to your `openclaw.json`:
 }
 ```
 
-Restart the gateway. That's it — `web_search` now routes through Claude WebSearch.
+Restart the gateway. `web_search` now routes through your Claude subscription.
 
-> **Why `provider: "perplexity"`?** OpenClaw doesn't have a native `claude-search-proxy` provider yet. The proxy speaks the same OpenAI-compatible protocol as Perplexity Sonar, so we piggyback on that config path. It works seamlessly.
+> **Why `provider: "perplexity"`?** The proxy speaks the same OpenAI-compatible protocol. No native provider exists yet, so we reuse the Perplexity config path. Works seamlessly.
 
-### Verify
+## General Usage
 
-```bash
-curl http://localhost:52480/health
-```
+Works with anything that speaks OpenAI's chat completions format — LangChain, LlamaIndex, custom agents, or plain curl.
 
-## Standalone Usage
+Point your client at `http://localhost:52480` with `apiKey: "not-needed"`:
 
-Don't use OpenClaw? The proxy works with anything that speaks OpenAI's chat completions format.
-
-```bash
-# Start the proxy
-npx claude-search-proxy
-```
-
-Server starts on `localhost:52480`. Send search queries:
-
-```bash
-curl -X POST http://localhost:52480/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"messages": [{"role": "user", "content": "latest humanoid robot news 2026"}]}'
-```
-
-Response:
 ```json
 {
   "choices": [{ "message": { "role": "assistant", "content": "..." } }],
@@ -85,59 +84,49 @@ Response:
 }
 ```
 
-Point any OpenAI-compatible client at `http://localhost:52480` with `apiKey: "not-needed"`.
-
-## Options
-
-```
---port <number>              Port to listen on (default: 52480)
---host <string>              Host to bind to (default: 127.0.0.1)
---model <string>             Claude model for searches (default: claude-sonnet-4-20250514)
---max-session-searches <n>   Searches per session before rotation (default: 20)
---timeout <ms>               CLI timeout in milliseconds (default: 60000)
---verbose                    Debug logging to stderr
-```
-
 ## How It Works
 
 ```
 Your app → POST /v1/chat/completions → claude-search-proxy
   → claude -p "query" --allowedTools WebSearch
-  → extracts citations from response
-  → returns OpenAI-shaped JSON with citations[] array
+  → extracts citations
+  → returns OpenAI-shaped JSON
 ```
 
-Sessions are reused for prompt caching (faster subsequent searches), then rotated after N queries to keep context bounded.
+Sessions are reused for prompt caching, then rotated after N queries to keep context bounded. Zero runtime dependencies — just Node.js built-ins.
+
+## Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--port` | `52480` | Port to listen on |
+| `--host` | `127.0.0.1` | Host to bind to |
+| `--model` | `claude-sonnet-4-20250514` | Claude model for searches |
+| `--max-session-searches` | `20` | Searches per session before rotation |
+| `--timeout` | `60000` | CLI timeout (ms) |
+| `--verbose` | off | Debug logging |
 
 ## Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/v1/chat/completions` | Search (OpenAI format) |
-| POST | `/chat/completions` | Same, without `/v1` prefix |
-| GET | `/health` | Status + session info |
+| `POST` | `/v1/chat/completions` | Search (OpenAI format) |
+| `POST` | `/chat/completions` | Same, without `/v1` prefix |
+| `GET` | `/health` | Status + session info |
 
 ## Security
 
-This proxy binds to **localhost only** by default. It has no authentication — anything that can reach the port can make searches.
+Localhost-only by default. No authentication — designed to run on your machine, not the internet.
 
-**What's protected:**
-- `child_process.spawn` (not `exec`) — no shell injection possible
-- Model name validation — prevents CLI flag injection
-- Host header validation — blocks [DNS rebinding](https://en.wikipedia.org/wiki/DNS_rebinding) attacks
-- CORS restricted to localhost origins
-- Request body and query length limits
+**Protected against:** shell injection (spawn, not exec), CLI flag injection (model name validation), DNS rebinding (Host header checks), oversized requests (body + query limits), CORS (localhost origins only).
 
-**What to be aware of:**
-- Searches consume your **Claude Max monthly token allowance**. If the calling agent gets prompt-injected, an attacker could burn through tokens via search queries. Monitor usage on your [Claude dashboard](https://claude.ai).
-- Session files in `~/.claude/` contain search history. Protect them like any credential file.
-- **Never bind to `0.0.0.0`** unless you understand the implications — there's no auth layer.
+**Be aware:** searches consume your plan's token allowance. Monitor usage on your [Claude dashboard](https://claude.ai). Never bind to `0.0.0.0` without understanding the implications.
 
 ## Requirements
 
 - **Node.js ≥ 18**
-- **Claude CLI** installed and authenticated with a Max subscription
-- That's the whole list. Zero runtime dependencies.
+- **Claude CLI** installed and authenticated with any paid Claude plan
+- Zero runtime dependencies
 
 ## Development
 
@@ -145,9 +134,8 @@ This proxy binds to **localhost only** by default. It has no authentication — 
 git clone https://github.com/LePetitPince/claude-search-proxy.git
 cd claude-search-proxy
 npm install
-npm run build        # compile TypeScript
+npm run build
 npm test             # 49 tests, no network calls
-npm start            # run the server
 ```
 
 ## License

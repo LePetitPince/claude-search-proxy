@@ -51,11 +51,23 @@ export class ProxyServer {
 
     return new Promise<Server>((resolve, reject) => {
       server.listen(this.config.port, this.config.host, () => {
-        console.error(`[Server] Listening on ${this.config.host}:${this.config.port}`);
+        if (this.config.verbose) {
+          console.error(`[Server] Listening on ${this.config.host}:${this.config.port}`);
+        }
         resolve(server);
       });
 
-      server.on('error', reject);
+      server.on('error', (error: any) => {
+        if (error.code === 'EADDRINUSE') {
+          console.error('');
+          console.error(`  ✗ Port ${this.config.port} is already in use`);
+          console.error(`  Try: claude-search-proxy --port ${this.config.port + 1}`);
+          console.error('');
+          process.exit(1);
+        } else {
+          reject(error);
+        }
+      });
 
       // Graceful shutdown
       const shutdown = () => {

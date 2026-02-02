@@ -5,10 +5,24 @@
  * Zero external dependencies - using process.argv manually
  */
 
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import type { ProxyConfig } from './types.js';
 import { MODEL_NAME_RE, isLocalhostAddr } from './types.js';
 import { ProxyServer } from './server.js';
 import { checkClaudeAvailable } from './claude.js';
+
+// Get package version
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const packagePath = join(__dirname, '../../package.json');
+let packageVersion: string;
+try {
+  const packageJson = JSON.parse(readFileSync(packagePath, 'utf-8'));
+  packageVersion = packageJson.version || '1.0.0';
+} catch {
+  packageVersion = '1.0.0';
+}
 
 /**
  * Default configuration
@@ -146,8 +160,10 @@ async function validateEnvironment(): Promise<void> {
   // Check if Claude CLI is available
   const claudeAvailable = await checkClaudeAvailable();
   if (!claudeAvailable) {
-    console.error('Error: Claude CLI not found in PATH');
-    console.error('Please install Claude CLI: https://claude.ai/cli');
+    console.error('  ✗ Claude CLI not found');
+    console.error('  Install: npm install -g @anthropic-ai/claude-code');
+    console.error('  Then:    claude auth login');
+    console.error('');
     process.exit(1);
   }
 
@@ -155,7 +171,8 @@ async function validateEnvironment(): Promise<void> {
   const nodeVersion = process.version;
   const majorVersion = parseInt(nodeVersion.slice(1).split('.')[0]);
   if (majorVersion < 18) {
-    console.error(`Error: Node.js >= 18 required, got ${nodeVersion}`);
+    console.error(`  ✗ Node.js >= 18 required, got ${nodeVersion}`);
+    console.error('');
     process.exit(1);
   }
 }
@@ -174,8 +191,11 @@ async function main(): Promise<void> {
 
     // Warn on non-localhost bind
     if (!isLocalhostAddr(config.host)) {
-      console.error(`⚠️  Warning: Binding to ${config.host} exposes the proxy to the network.`);
-      console.error('   This proxy has no authentication. Use 127.0.0.1 (default) for local use.');
+      console.error('');
+      console.error('  ⚠️  WARNING: Non-localhost binding detected!');
+      console.error(`      Binding to ${config.host} exposes the proxy to the network.`);
+      console.error('      This proxy has no authentication. Use 127.0.0.1 for local use only.');
+      console.error('');
     }
 
     // Validate environment
@@ -189,7 +209,26 @@ async function main(): Promise<void> {
     const server = new ProxyServer(config);
     await server.start();
 
-    console.error('[Main] Server started successfully');
+    // Show startup banner
+    const protocol = config.host.includes(':') ? 'http' : 'http'; // Always http for now
+    const url = `${protocol}://${config.host}:${config.port}`;
+    
+    console.error('');
+    console.error(`  claude-search-proxy v${packageVersion}`);
+    console.error('');
+    console.error(`  ✓ Ready on ${url}`);
+    console.error('');
+    console.error('  Endpoints:');
+    console.error('    POST /v1/chat/completions   Search (OpenAI format)');
+    console.error('    GET  /health                Status & diagnostics');
+    console.error('');
+    console.error('  Try it:');
+    console.error(`    curl -X POST ${url}/v1/chat/completions \\`);
+    console.error('      -H "Content-Type: application/json" \\');
+    console.error('      -d \'{"messages":[{"role":"user","content":"latest AI news"}]}\'');
+    console.error('');
+    console.error('  Press Ctrl+C to stop');
+    console.error('');
 
   } catch (error) {
     console.error('[Main] Startup failed:', error);
