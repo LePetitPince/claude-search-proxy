@@ -13,11 +13,21 @@ Claude Max ($200/mo) includes WebSearch at no additional charge. But the OAuth t
 ## Quick Start
 
 ```bash
-# Prerequisites: Node.js ≥ 18, Claude CLI installed and authenticated
+# 1. Install Claude CLI (if you haven't already)
+npm install -g @anthropic-ai/claude-code
+
+# 2. Authenticate with your Max subscription
+claude auth login
+
+# 3. Start the proxy
 npx claude-search-proxy
 ```
 
-That's it. Server starts on `localhost:52480`.
+Server starts on `localhost:52480`. Verify it works:
+
+```bash
+curl http://localhost:52480/health
+```
 
 ## Usage
 

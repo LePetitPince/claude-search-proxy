@@ -176,13 +176,48 @@ describe('ProxyServer', () => {
     assert.strictEqual(res.status, 404);
   });
 
-  it('should handle CORS preflight', async () => {
+  it('should handle CORS preflight with localhost origin', async () => {
     const { port } = await startServer();
 
-    const res = await request(port, 'OPTIONS', '/v1/chat/completions');
+    // With a localhost origin
+    const res = await new Promise<{ status: number; headers: http.IncomingHttpHeaders }>((resolve, reject) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port,
+        path: '/v1/chat/completions',
+        method: 'OPTIONS',
+        headers: { 'Origin': 'http://localhost:3000' }
+      }, (r) => {
+        resolve({ status: r.statusCode!, headers: r.headers });
+      });
+      req.on('error', reject);
+      req.end();
+    });
+
     assert.strictEqual(res.status, 204);
-    assert.strictEqual(res.headers['access-control-allow-origin'], 'http://localhost');
+    assert.strictEqual(res.headers['access-control-allow-origin'], 'http://localhost:3000');
     assert.ok(res.headers['access-control-allow-methods']?.includes('POST'));
+  });
+
+  it('should not reflect CORS for non-localhost origins', async () => {
+    const { port } = await startServer();
+
+    const res = await new Promise<{ status: number; headers: http.IncomingHttpHeaders }>((resolve, reject) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port,
+        path: '/v1/chat/completions',
+        method: 'OPTIONS',
+        headers: { 'Origin': 'https://evil.com' }
+      }, (r) => {
+        resolve({ status: r.statusCode!, headers: r.headers });
+      });
+      req.on('error', reject);
+      req.end();
+    });
+
+    assert.strictEqual(res.status, 204);
+    assert.strictEqual(res.headers['access-control-allow-origin'], undefined);
   });
 
   it('should return 500 when executor fails', async () => {
@@ -207,7 +242,7 @@ describe('ProxyServer', () => {
 
     assert.strictEqual(res.status, 500);
     const err = JSON.parse(res.body);
-    assert.ok(err.error.message.includes('Search request failed'));
+    assert.ok(err.error.message.includes('Claude exploded'));
   });
 
   it('should reject oversized request bodies with 413', async () => {
@@ -253,7 +288,7 @@ describe('ProxyServer', () => {
   // HTTP-level queue overflow test is impractical because pending connections
   // from the never-resolving executor would hang the test suite.
 
-  it('should not leak internal error details to clients', async () => {
+  it('should show real error messages to the operator', async () => {
     const port = randomPort();
     const config: ProxyConfig = {
       port,
@@ -264,10 +299,10 @@ describe('ProxyServer', () => {
       verbose: false
     };
 
-    const leakyExecutor = async () => {
-      throw new Error('secret: /home/user/.claude/credentials at line 42');
+    const failExecutor = async () => {
+      throw new Error('Claude CLI returned an error');
     };
-    const server = new ProxyServer(config, leakyExecutor);
+    const server = new ProxyServer(config, failExecutor);
     const httpServer = await server.start();
     servers.push(httpServer);
 
@@ -277,9 +312,7 @@ describe('ProxyServer', () => {
 
     assert.strictEqual(res.status, 500);
     const err = JSON.parse(res.body);
-    // Should NOT contain the internal path
-    assert.ok(!err.error.message.includes('/home/'), 'Error leaked internal path');
-    assert.ok(!err.error.message.includes('credentials'), 'Error leaked credential info');
-    assert.ok(err.error.message.includes('Search request failed'));
+    // Operator should see the real error for debugging
+    assert.ok(err.error.message.includes('Claude CLI returned an error'));
   });
 });

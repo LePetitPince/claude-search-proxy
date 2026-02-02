@@ -6,6 +6,17 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'http';
 import type { ProxyConfig, OpenAIRequest, ErrorResponse } from './types.js';
 import { MAX_BODY_BYTES, MAX_QUERY_LENGTH } from './types.js';
+
+/** Check if an Origin header is a localhost address (any port) */
+function isLocalOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    const host = url.hostname;
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  } catch {
+    return false;
+  }
+}
 import { SessionManager, type ClaudeExecutor } from './session.js';
 import { formatOpenAIResponse, extractQuery, formatErrorResponse } from './format.js';
 
@@ -53,7 +64,7 @@ export class ProxyServer {
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const { method, url } = req;
 
-    this.setCors(res);
+    this.setCors(req, res);
 
     if (method === 'OPTIONS') {
       res.writeHead(204);
@@ -74,17 +85,10 @@ export class ProxyServer {
         this.sendError(res, 'Not found', 404);
       }
     } catch (error) {
-      // Log full detail server-side, return generic message to client
       console.error('[Server] Request error:', error);
       const message = error instanceof Error ? error.message : 'Unknown error';
-      // Only pass through known safe error messages
-      const safeMessages = [
-        'Request queue full, try again later',
-        'No user message found in request'
-      ];
-      const clientMessage = safeMessages.includes(message) ? message : 'Search request failed';
       const status = message.includes('queue full') ? 503 : 500;
-      this.sendError(res, clientMessage, status);
+      this.sendError(res, message, status);
     }
   }
 
@@ -179,10 +183,13 @@ export class ProxyServer {
     });
   }
 
-  /** Set CORS headers — restricted to localhost origins only */
-  private setCors(res: ServerResponse): void {
-    res.setHeader('Access-Control-Allow-Origin', 'http://localhost');
-    res.setHeader('Vary', 'Origin');
+  /** Set CORS headers — reflects origin if it's a localhost address */
+  private setCors(req: IncomingMessage, res: ServerResponse): void {
+    const origin = req.headers.origin;
+    if (origin && isLocalOrigin(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+    }
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   }
