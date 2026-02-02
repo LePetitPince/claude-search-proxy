@@ -58,5 +58,9 @@
   },
   "homepage": "https://github.com/LePetitPince/claude-search-proxy",
   "bugs": "https://github.com/LePetitPince/claude-search-proxy/issues",
-  "author": "LePetitPince <lepetitpince@proton.me> (https://github.com/LePetitPince)"
+  "author": "LePetitPince <lepetitpince@proton.me> (https://github.com/LePetitPince)",
+  "private": true,
+  "publishConfig": {
+    "access": "restricted"
+  }
 }

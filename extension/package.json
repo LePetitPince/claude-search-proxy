@@ -1,5 +1,5 @@
 {
-  "name": "@claude-search-proxy/openclaw-extension",
+  "name": "claude-search-proxy",
   "version": "1.0.0",
   "type": "module",
   "description": "OpenClaw extension — managed claude-search-proxy service with auto-configuration",

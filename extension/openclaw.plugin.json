@@ -1,4 +1,9 @@
 {
   "id": "claude-search-proxy",
-  "services": ["claude-search-proxy"]
+  "services": ["claude-search-proxy"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
 }
