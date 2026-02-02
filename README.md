@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 
-**You don't need to pay for a search API.** Your Claude subscription already includes web search — this proxy lets you actually use it.
+**You don't need to pay for a search API to give your [OpenClaw](https://github.com/openclaw/openclaw) agent web search.** Your Claude subscription already includes it — this proxy lets you actually use it.
 
 ```bash
 npm install -g claude-search-proxy
