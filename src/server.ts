@@ -54,6 +54,15 @@ export class ProxyServer {
         if (this.config.verbose) {
           console.error(`[Server] Listening on ${this.config.host}:${this.config.port}`);
         }
+
+        // Warm up session in background — don't block server start
+        console.error('[Server] Warming up Claude session...');
+        this.sessionManager.warmUp().then(() => {
+          console.error('[Server] Session warm — ready for fast searches');
+        }).catch(() => {
+          console.error('[Server] Warm-up failed — first search will be slow');
+        });
+
         resolve(server);
       });
 

@@ -42,12 +42,53 @@ export class SessionManager {
     searchCount: 0
   };
 
+  private nextSession: SessionState | null = null;
+  private preWarmingInProgress = false;
+  private warmupComplete = false;
+
   private queue: Array<QueuedTask<ClaudeResult>> = [];
   private processing = false;
   private executor: ClaudeExecutor;
 
   constructor(private config: ProxyConfig, executor?: ClaudeExecutor) {
     this.executor = executor ?? executeClaude;
+  }
+
+  /**
+   * Warm up the session by firing a lightweight search.
+   * Call on server start to avoid cold-start latency on first real request.
+   */
+  async warmUp(): Promise<void> {
+    if (this.warmupComplete) return;
+
+    this.initializeSession();
+    const sessionId = this.session.sessionId!;
+
+    if (this.config.verbose) {
+      console.error(`[Session] Warming up session ${sessionId.slice(0, 8)}...`);
+    }
+
+    try {
+      await this.executor({
+        query: 'ping',
+        sessionId,
+        isFirstSearch: true,
+        systemPrompt: SEARCH_SYSTEM_PROMPT,
+        model: this.config.model,
+        timeout: this.config.timeout,
+        verbose: this.config.verbose
+      });
+      this.session.searchCount++;
+      this.warmupComplete = true;
+
+      if (this.config.verbose) {
+        console.error(`[Session] Warm-up complete (session ${sessionId.slice(0, 8)})`);
+      }
+    } catch (error) {
+      console.error(`[Session] Warm-up failed:`, error instanceof Error ? error.message : error);
+      // Reset so first real request creates a fresh session
+      this.session = { sessionId: null, searchCount: 0 };
+    }
   }
 
   /**
@@ -99,7 +140,7 @@ export class SessionManager {
    * Execute a single search with session management
    */
   private async executeSearch(query: string): Promise<ClaudeResult> {
-    // Rotate if we've hit the limit
+    // Rotate if we've hit the limit — use pre-warmed session if available
     if (this.shouldRotateSession()) {
       this.rotateSession();
     }
@@ -129,6 +170,9 @@ export class SessionManager {
         console.error(`[Session] Search ${this.session.searchCount}/${this.config.maxSessionSearches} (session ${sessionId.slice(0, 8)}...)`);
       }
 
+      // Pre-warm next session when approaching the limit
+      this.maybePreWarmNextSession();
+
       return result;
     } catch (error) {
       if (this.config.verbose) {
@@ -136,6 +180,42 @@ export class SessionManager {
       }
       throw error;
     }
+  }
+
+  /**
+   * Pre-warm the next session when we're 2 searches from the rotation limit.
+   * Runs in the background — doesn't block the current request.
+   */
+  private maybePreWarmNextSession(): void {
+    const remaining = this.config.maxSessionSearches - this.session.searchCount;
+    if (remaining > 2 || this.preWarmingInProgress || this.nextSession) return;
+
+    this.preWarmingInProgress = true;
+    const newSessionId = randomUUID();
+
+    if (this.config.verbose) {
+      console.error(`[Session] Pre-warming next session ${newSessionId.slice(0, 8)}...`);
+    }
+
+    this.executor({
+      query: 'ping',
+      sessionId: newSessionId,
+      isFirstSearch: true,
+      systemPrompt: SEARCH_SYSTEM_PROMPT,
+      model: this.config.model,
+      timeout: this.config.timeout,
+      verbose: this.config.verbose
+    }).then(() => {
+      this.nextSession = { sessionId: newSessionId, searchCount: 1 };
+      this.preWarmingInProgress = false;
+
+      if (this.config.verbose) {
+        console.error(`[Session] Next session pre-warmed: ${newSessionId.slice(0, 8)}`);
+      }
+    }).catch(error => {
+      this.preWarmingInProgress = false;
+      console.error(`[Session] Pre-warm failed:`, error instanceof Error ? error.message : error);
+    });
   }
 
   private shouldRotateSession(): boolean {
@@ -155,10 +235,22 @@ export class SessionManager {
 
   private rotateSession(): void {
     const oldId = this.session.sessionId;
-    this.initializeSession();
 
-    if (this.config.verbose) {
-      console.error(`[Session] Rotated: ${oldId?.slice(0, 8)} → ${this.session.sessionId?.slice(0, 8)}`);
+    if (this.nextSession) {
+      // Use pre-warmed session
+      this.session = this.nextSession;
+      this.nextSession = null;
+
+      if (this.config.verbose) {
+        console.error(`[Session] Rotated (pre-warmed): ${oldId?.slice(0, 8)} → ${this.session.sessionId?.slice(0, 8)}`);
+      }
+    } else {
+      // No pre-warmed session available — cold rotate
+      this.initializeSession();
+
+      if (this.config.verbose) {
+        console.error(`[Session] Rotated (cold): ${oldId?.slice(0, 8)} → ${this.session.sessionId?.slice(0, 8)}`);
+      }
     }
   }
 
@@ -174,6 +266,9 @@ export class SessionManager {
   /** Reset session state (for testing) */
   reset(): void {
     this.session = { sessionId: null, searchCount: 0 };
+    this.nextSession = null;
+    this.preWarmingInProgress = false;
+    this.warmupComplete = false;
     this.queue = [];
     this.processing = false;
   }

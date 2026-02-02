@@ -47,7 +47,7 @@ const baseConfig: ProxyConfig = {
   port: 52480,
   host: '127.0.0.1',
   model: 'claude-sonnet-4',
-  maxSessionSearches: 3,
+  maxSessionSearches: 20, // High enough that pre-warming never triggers in basic tests
   timeout: 30000,
   verbose: false
 };
@@ -60,7 +60,7 @@ describe('SessionManager', () => {
 
     assert.strictEqual(info.sessionId, null);
     assert.strictEqual(info.searchCount, 0);
-    assert.strictEqual(info.maxSearches, 3);
+    assert.strictEqual(info.maxSearches, 20);
   });
 
   it('should create a session on first search', async () => {
@@ -99,26 +99,34 @@ describe('SessionManager', () => {
   });
 
   it('should rotate session after max searches', async () => {
+    // Extra results for pre-warm ping that fires at remaining=2
     const { executor, calls } = createMockExecutor([
-      mockResult(), mockResult(), mockResult(), mockResult()
+      mockResult(), mockResult(), mockResult(), mockResult(), mockResult()
     ]);
-    const sm = new SessionManager(baseConfig, executor);
+    const config = { ...baseConfig, maxSessionSearches: 3 };
+    const sm = new SessionManager(config, executor);
 
     // Fill up first session (maxSessionSearches = 3)
     await sm.execute('q1');
     await sm.execute('q2');
     await sm.execute('q3');
-    const firstSession = calls[0].sessionId;
 
-    assert.strictEqual(sm.getSessionInfo().searchCount, 3);
+    // Wait for async pre-warm to complete
+    await new Promise(r => setTimeout(r, 50));
 
-    // Next search should rotate
+    // Next search should rotate to pre-warmed session
     await sm.execute('q4');
-    const newSession = calls[3].sessionId;
 
-    assert.notStrictEqual(firstSession, newSession);
-    assert.strictEqual(sm.getSessionInfo().searchCount, 1);
-    assert.strictEqual(calls[3].isFirstSearch, true); // New session = first search
+    // Filter out pre-warm pings to check real search behavior
+    const searchCalls = calls.filter(c => c.query !== 'ping');
+    assert.strictEqual(searchCalls.length, 4);
+
+    const firstSession = searchCalls[0].sessionId;
+    const rotatedSession = searchCalls[3].sessionId;
+
+    assert.notStrictEqual(firstSession, rotatedSession);
+    assert.strictEqual(searchCalls[0].sessionId, searchCalls[1].sessionId);
+    assert.strictEqual(searchCalls[1].sessionId, searchCalls[2].sessionId);
   });
 
   it('should not increment count on failure', async () => {
@@ -169,6 +177,39 @@ describe('SessionManager', () => {
     sm.reset();
     assert.strictEqual(sm.getSessionInfo().sessionId, null);
     assert.strictEqual(sm.getSessionInfo().searchCount, 0);
+  });
+
+  it('should warm up session on demand', async () => {
+    const { executor, calls } = createMockExecutor([mockResult(), mockResult()]);
+    const sm = new SessionManager(baseConfig, executor);
+
+    // Before warm-up: no session
+    assert.strictEqual(sm.getSessionInfo().sessionId, null);
+
+    await sm.warmUp();
+
+    // After warm-up: session exists with 1 search (the ping)
+    assert.ok(sm.getSessionInfo().sessionId !== null);
+    assert.strictEqual(sm.getSessionInfo().searchCount, 1);
+    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(calls[0].query, 'ping');
+    assert.strictEqual(calls[0].isFirstSearch, true);
+
+    // Subsequent search reuses warm session
+    await sm.execute('real query');
+    assert.strictEqual(sm.getSessionInfo().searchCount, 2);
+    assert.strictEqual(calls[1].isFirstSearch, false);
+    assert.strictEqual(calls[0].sessionId, calls[1].sessionId);
+  });
+
+  it('should only warm up once', async () => {
+    const { executor, calls } = createMockExecutor([mockResult(), mockResult()]);
+    const sm = new SessionManager(baseConfig, executor);
+
+    await sm.warmUp();
+    await sm.warmUp(); // Second call should be no-op
+
+    assert.strictEqual(calls.length, 1);
   });
 
   it('should reject when queue is full', async () => {

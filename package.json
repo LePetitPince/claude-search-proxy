@@ -1,6 +1,6 @@
 {
   "name": "claude-search-proxy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "OpenAI-compatible HTTP proxy that turns any Claude subscription's built-in WebSearch into a search API. Zero-cost web search for OpenClaw and any OpenAI-compatible client.",
   "type": "module",
   "main": "./dist/src/index.js",
