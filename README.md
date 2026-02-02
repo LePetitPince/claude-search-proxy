@@ -89,6 +89,22 @@ Sessions are reused for prompt caching (faster subsequent searches), then rotate
 | POST | `/chat/completions` | Same, without `/v1` prefix |
 | GET | `/health` | Status + session info |
 
+## Security
+
+This proxy binds to **localhost only** by default. It has no authentication — anything that can reach the port can make searches.
+
+**What's protected:**
+- `child_process.spawn` (not `exec`) — no shell injection possible
+- Model name validation — prevents CLI flag injection
+- Host header validation — blocks [DNS rebinding](https://en.wikipedia.org/wiki/DNS_rebinding) attacks
+- CORS restricted to localhost origins
+- Request body and query length limits
+
+**What to be aware of:**
+- Searches consume your **Claude Max monthly token allowance**. If the calling agent gets prompt-injected, an attacker could burn through tokens via search queries. Monitor usage on your [Claude dashboard](https://claude.ai).
+- Session files in `~/.claude/` contain search history. Protect them like any credential file.
+- **Never bind to `0.0.0.0`** unless you understand the implications — there's no auth layer.
+
 ## Requirements
 
 - **Node.js ≥ 18**

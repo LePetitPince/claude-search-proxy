@@ -17,6 +17,13 @@ function isLocalOrigin(origin: string): boolean {
     return false;
   }
 }
+
+/** Check if a Host header is a localhost address (DNS rebinding protection) */
+function isLocalHost(host: string | undefined): boolean {
+  if (!host) return true; // No Host header = direct connection, allow
+  const hostname = host.split(':')[0]; // Strip port
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
 import { SessionManager, type ClaudeExecutor } from './session.js';
 import { formatOpenAIResponse, extractQuery, formatErrorResponse } from './format.js';
 
@@ -63,6 +70,13 @@ export class ProxyServer {
   /** Route incoming requests */
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const { method, url } = req;
+
+    // DNS rebinding protection: reject requests with non-localhost Host headers
+    if (!isLocalHost(req.headers.host)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: 'Forbidden: non-localhost Host header', type: 'forbidden' } }));
+      return;
+    }
 
     this.setCors(req, res);
 

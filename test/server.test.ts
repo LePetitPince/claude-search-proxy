@@ -199,6 +199,37 @@ describe('ProxyServer', () => {
     assert.ok(res.headers['access-control-allow-methods']?.includes('POST'));
   });
 
+  it('should block requests with non-localhost Host header (DNS rebinding)', async () => {
+    const { port } = await startServer();
+
+    const res = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port,
+        path: '/health',
+        method: 'GET',
+        headers: { 'Host': 'evil.attacker.com' }
+      }, (r) => {
+        let body = '';
+        r.on('data', (chunk) => { body += chunk.toString(); });
+        r.on('end', () => resolve({ status: r.statusCode!, body }));
+      });
+      req.on('error', reject);
+      req.end();
+    });
+
+    assert.strictEqual(res.status, 403);
+    const err = JSON.parse(res.body);
+    assert.ok(err.error.message.includes('non-localhost'));
+  });
+
+  it('should allow requests with localhost Host header (any port)', async () => {
+    const { port } = await startServer();
+
+    const res = await request(port, 'GET', '/health');
+    assert.strictEqual(res.status, 200);
+  });
+
   it('should not reflect CORS for non-localhost origins', async () => {
     const { port } = await startServer();
 
