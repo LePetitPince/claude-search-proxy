@@ -8,7 +8,7 @@ A tiny HTTP proxy that wraps Claude CLI's built-in WebSearch tool and speaks Ope
 
 Claude Max ($200/mo) includes WebSearch at no additional charge. But the OAuth tokens don't work with the Anthropic Messages API directly. This proxy bridges the gap: it shells out to `claude -p` (which handles OAuth internally) and returns search results in a format your tools already understand.
 
-**You get:** web search for your agent, at zero marginal cost, using a subscription you're already paying for.
+**You get:** web search for your agent, no extra API keys or billing, using a subscription you're already paying for. Searches consume your Max plan's monthly token allowance — but you're not paying per-search on top of it.
 
 ## Quick Start
 
