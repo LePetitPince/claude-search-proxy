@@ -58,7 +58,7 @@ Add to your `openclaw.json`:
       search: {
         provider: "perplexity",
         perplexity: {
-          baseUrl: "http://localhost:52480",
+          baseUrl: "http://127.0.0.1:52480",
           apiKey: "not-needed"
         }
       }
