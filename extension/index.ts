@@ -69,6 +69,23 @@ const plugin = {
       id: "claude-search-proxy",
 
       async start(ctx: any) {
+        // Check if search config points at us
+        const searchCfg = ctx.config?.tools?.web?.search;
+        const perplexityCfg = searchCfg?.perplexity;
+        const isConfigured =
+          searchCfg?.provider === "perplexity" &&
+          perplexityCfg?.baseUrl?.includes(String(port));
+
+        if (!isConfigured) {
+          ctx.logger.warn(
+            `claude-search-proxy: search config not detected. Add this to your openclaw.json:\n` +
+            `  "tools": { "web": { "search": {\n` +
+            `    "provider": "perplexity",\n` +
+            `    "perplexity": { "baseUrl": "http://localhost:${port}", "apiKey": "not-needed" }\n` +
+            `  }}}`,
+          );
+        }
+
         const { cmd, args } = resolveCommand();
         const fullArgs = [...args, "--port", String(port), "--host", host];
 
