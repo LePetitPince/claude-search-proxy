@@ -3,6 +3,8 @@
  */
 
 import { randomUUID } from 'crypto';
+import { rm, readdir, access } from 'fs/promises';
+import { join } from 'path';
 import type { SessionState, QueuedTask, ClaudeResult, ProxyConfig } from './types.js';
 import { MAX_QUEUE_SIZE } from './types.js';
 import { executeClaude } from './claude.js';
@@ -61,34 +63,44 @@ export class SessionManager {
   async warmUp(): Promise<void> {
     if (this.warmupComplete) return;
 
-    this.initializeSession();
-    const sessionId = this.session.sessionId!;
+    // Retry with fresh session IDs if "already in use" error
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      this.initializeSession();
+      const sessionId = this.session.sessionId!;
 
-    if (this.config.verbose) {
-      console.error(`[Session] Warming up session ${sessionId.slice(0, 8)}...`);
-    }
+      console.error(`[Session] Warming up session ${sessionId.slice(0, 8)}... (attempt ${attempt + 1}/${maxRetries})`);
 
-    try {
-      await this.executor({
-        query: 'ping',
-        sessionId,
-        isFirstSearch: true,
-        systemPrompt: SEARCH_SYSTEM_PROMPT,
-        model: this.config.model,
-        timeout: this.config.timeout,
-        verbose: this.config.verbose
-      });
-      this.session.searchCount++;
-      this.warmupComplete = true;
+      try {
+        await this.executor({
+          query: 'ping',
+          sessionId,
+          isFirstSearch: true,
+          systemPrompt: SEARCH_SYSTEM_PROMPT,
+          model: this.config.model,
+          timeout: this.config.timeout,
+          verbose: this.config.verbose
+        });
+        this.session.searchCount++;
+        this.warmupComplete = true;
 
-      if (this.config.verbose) {
-        console.error(`[Session] Warm-up complete (session ${sessionId.slice(0, 8)})`);
+        if (this.config.verbose) {
+          console.error(`[Session] Warm-up complete (session ${sessionId.slice(0, 8)})`);
+        }
+        return; // Success — exit the retry loop
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error(`[Session] Warm-up attempt ${attempt + 1} failed: ${msg}`);
+        this.session = { sessionId: null, searchCount: 0 };
+
+        if (msg.includes('already in use') && attempt < maxRetries - 1) {
+          console.error(`[Session] Retrying with new session ID...`);
+          continue;
+        }
       }
-    } catch (error) {
-      console.error(`[Session] Warm-up failed:`, error instanceof Error ? error.message : error);
-      // Reset so first real request creates a fresh session
-      this.session = { sessionId: null, searchCount: 0 };
     }
+
+    console.error(`[Session] All warm-up attempts failed. Will try on first request.`);
   }
 
   /**
@@ -252,6 +264,72 @@ export class SessionManager {
         console.error(`[Session] Rotated (cold): ${oldId?.slice(0, 8)} → ${this.session.sessionId?.slice(0, 8)}`);
       }
     }
+
+    // Clean up old session artifacts in the background
+    if (oldId) {
+      this.cleanupSession(oldId);
+    }
+  }
+
+  /**
+   * Remove Claude CLI artifacts for a retired session.
+   * Runs async in background — failures are logged but don't block.
+   * Cleans: session .jsonl, session dir, todos, session-env, debug files.
+   */
+  private cleanupSession(sessionId: string): void {
+    const claudeDir = join(process.env.HOME ?? '/tmp', '.claude');
+
+    const tryRm = async (target: string, opts?: { recursive?: boolean }): Promise<boolean> => {
+      try {
+        await rm(target, { force: true, ...opts });
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const safeReaddir = async (dir: string): Promise<string[]> => {
+      try { return await readdir(dir); } catch { return []; }
+    };
+
+    const cleanup = async () => {
+      let cleaned = 0;
+
+      // 1. Session .jsonl and session dir in all project dirs
+      const projectsDir = join(claudeDir, 'projects');
+      for (const projDir of await safeReaddir(projectsDir)) {
+        const projPath = join(projectsDir, projDir);
+        if (await tryRm(join(projPath, `${sessionId}.jsonl`))) cleaned++;
+        if (await tryRm(join(projPath, sessionId), { recursive: true })) cleaned++;
+      }
+
+      // 2. Todos — Claude CLI names these as `{sessionId}-agent-{sessionId}.json`
+      const todosDir = join(claudeDir, 'todos');
+      for (const f of await safeReaddir(todosDir)) {
+        if (f.startsWith(sessionId)) {
+          if (await tryRm(join(todosDir, f))) cleaned++;
+        }
+      }
+
+      // 3. Session-env
+      if (await tryRm(join(claudeDir, 'session-env', `${sessionId}.json`))) cleaned++;
+
+      // 4. Debug logs — only exact session ID prefix matches
+      const debugDir = join(claudeDir, 'debug');
+      for (const f of await safeReaddir(debugDir)) {
+        if (f.startsWith(sessionId)) {
+          if (await tryRm(join(debugDir, f))) cleaned++;
+        }
+      }
+
+      if (cleaned > 0) {
+        console.error(`[Session] Cleaned ${cleaned} artifact(s) for retired session ${sessionId.slice(0, 8)}`);
+      }
+    };
+
+    cleanup().catch(err => {
+      console.error(`[Session] Cleanup failed for ${sessionId.slice(0, 8)}: ${err instanceof Error ? err.message : err}`);
+    });
   }
 
   /** Get current session info (for health endpoint / debugging) */

@@ -1,0 +1,26 @@
+# systemd user service for claude-search-proxy
+#
+# Install:
+#   mkdir -p ~/.config/systemd/user
+#   cp claude-search-proxy.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now claude-search-proxy
+#
+# Logs:
+#   journalctl --user -u claude-search-proxy -f
+#
+# Adjust ExecStart flags to taste (--port, --timeout, --model, --verbose).
+
+[Unit]
+Description=Claude Search Proxy
+After=network.target
+
+[Service]
+# Timeout 90s (above default 60s) to avoid cold-start timeouts on first search.
+# If PATH doesn't include npm global bin, use full path: /usr/bin/claude-search-proxy
+ExecStart=claude-search-proxy --port 52480 --timeout 90000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

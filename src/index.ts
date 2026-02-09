@@ -67,9 +67,12 @@ ENDPOINTS:
 
 OPENAI CLIENT CONFIGURATION:
   {
-    "baseURL": "http://localhost:${DEFAULT_CONFIG.port}",
+    "baseURL": "http://127.0.0.1:${DEFAULT_CONFIG.port}",
     "apiKey": "not-needed"
   }
+
+VERIFY:
+  curl -s http://127.0.0.1:${DEFAULT_CONFIG.port}/health | jq .status
 `);
 }
 

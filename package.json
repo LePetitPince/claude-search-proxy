@@ -17,7 +17,9 @@
     "dist/src/",
     "dist/extension/",
     "extension/",
+    "contrib/",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -26,7 +28,8 @@
     "test": "tsc -p tsconfig.test.json && node --test dist/test/*.test.js",
     "start": "node dist/src/index.js",
     "prepare": "npm run build",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build && npm test"
   },
   "engines": {
     "node": ">=18"
