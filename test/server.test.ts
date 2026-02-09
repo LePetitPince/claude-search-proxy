@@ -12,7 +12,7 @@ import { ProxyServer } from '../src/server.js';
 
 // Random port to avoid conflicts
 function randomPort(): number {
-  return 40000 + Math.floor(Math.random() * 10000);
+  return 30000 + Math.floor(Math.random() * 30000);
 }
 
 // HTTP request helper

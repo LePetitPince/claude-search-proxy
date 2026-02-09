@@ -13,7 +13,7 @@ import { ProxyServer } from '../src/server.js';
 // --- Helpers (same pattern as server.test.ts) ---
 
 function randomPort(): number {
-  return 40000 + Math.floor(Math.random() * 10000);
+  return 30000 + Math.floor(Math.random() * 30000);
 }
 
 async function request(
