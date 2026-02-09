@@ -171,6 +171,37 @@ Response format:
 }
 ```
 
+## Running as a Service (systemd)
+
+For always-on setups (servers, headless machines, AI agent hosts), run the proxy as a systemd user service so it starts on boot and restarts on failure.
+
+```bash
+# Copy the sample unit file
+mkdir -p ~/.config/systemd/user
+cp contrib/claude-search-proxy.service ~/.config/systemd/user/
+
+# Or if installed globally via npm:
+cp $(npm root -g)/claude-search-proxy/contrib/claude-search-proxy.service \
+   ~/.config/systemd/user/
+
+# Enable and start
+systemctl --user daemon-reload
+systemctl --user enable --now claude-search-proxy
+```
+
+Check status and logs:
+
+```bash
+systemctl --user status claude-search-proxy
+journalctl --user -u claude-search-proxy -f
+```
+
+The sample unit uses `Restart=on-failure` with a 5-second cooldown. Adjust `ExecStart` flags in the unit file to change port, timeout, or model.
+
+> **Note:** User services require an active login session by default. To keep the service running after logout, enable lingering: `loginctl enable-linger $USER`
+
+> **PATH note:** User services may not inherit your shell's PATH. If the proxy fails to start, replace `claude-search-proxy` in ExecStart with the full path (find it with `which claude-search-proxy`).
+
 ## How It Works
 
 ```
@@ -203,6 +234,17 @@ Your app → POST /v1/chat/completions → claude-search-proxy
 | `POST` | `/chat/completions` | Same, without `/v1` prefix |
 | `GET` | `/health` | Status + session info |
 
+## Limitations
+
+Be aware of these constraints before choosing this proxy:
+
+- **Sequential requests only** — searches are queued and processed one at a time. This is a Claude CLI constraint, not a bug.
+- **Cold start latency** — the first search after startup takes 30-60s (session creation + web search). Subsequent searches are 5-15s. The proxy pre-warms sessions to minimize this.
+- **No streaming** — responses are returned complete, not streamed. The `stream: true` parameter is accepted but ignored.
+- **Requires a paid Claude plan** — Pro, Max, Teams, or Enterprise. The free tier does not include the WebSearch tool.
+- **Consumes your plan's token allowance** — each search uses Claude tokens. Monitor your usage on the [Claude dashboard](https://claude.ai).
+- **Session artifacts** — Claude CLI creates session files in `~/.claude/`. The proxy cleans these up automatically on session rotation, but you may see temporary files during operation.
+
 ## Security
 
 Localhost-only by default. No authentication — designed to run on your machine, not the internet.
@@ -225,7 +267,7 @@ git clone https://github.com/LePetitPince/claude-search-proxy.git
 cd claude-search-proxy
 npm install
 npm run build
-npm test             # 51 tests, no network calls
+npm test             # 91 tests, no network calls
 ```
 
 ## Troubleshooting
@@ -241,6 +283,18 @@ npm test             # 51 tests, no network calls
 
 **"EADDRINUSE"**
 - Another instance is running on that port. Kill it or use `--port 52481`
+
+**Searches are slow (30-60s)**
+- Expected on the first search after startup (session creation). Subsequent searches should be 5-15s.
+- If ALL searches are slow, the session may not be persisting. Check `--verbose` output for "Rotated" messages.
+
+**Empty or unhelpful results**
+- Claude's WebSearch may not find results for very specific or niche queries
+- Try rephrasing the query — the proxy passes it directly to Claude
+
+**Session "already in use" error in logs**
+- Normal during startup — the proxy retries with fresh session IDs automatically (up to 3 attempts)
+- If persistent, delete stale sessions: `rm ~/.claude/projects/*/SESSION_ID*`
 
 ## License
 
