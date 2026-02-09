@@ -12,10 +12,6 @@ import { ProxyServer } from '../src/server.js';
 
 // --- Helpers (same pattern as server.test.ts) ---
 
-function randomPort(): number {
-  return 30000 + Math.floor(Math.random() * 30000);
-}
-
 async function request(
   port: number,
   method: string,
@@ -63,9 +59,8 @@ async function startServer(
   config: Partial<ProxyConfig> = {},
   mockResult?: ClaudeResult
 ): Promise<{ port: number }> {
-  const port = randomPort();
   const fullConfig: ProxyConfig = {
-    port,
+    port: 0, // OS assigns a free port
     host: '127.0.0.1',
     model: 'claude-sonnet-4',
     maxSessionSearches: 20,
@@ -78,7 +73,8 @@ async function startServer(
   const server = new ProxyServer(fullConfig, mockExecutor);
   const httpServer = await server.start();
   servers.push(httpServer);
-  return { port };
+  const addr = httpServer.address() as import('net').AddressInfo;
+  return { port: addr.port };
 }
 
 afterEach(async () => {
@@ -109,13 +105,13 @@ describe('Command Injection via query', () => {
         return mockClaudeResult();
       };
 
-      const port = randomPort();
       const server = new ProxyServer({
-        port, host: '127.0.0.1', model: 'claude-sonnet-4',
+        port: 0, host: '127.0.0.1', model: 'claude-sonnet-4',
         maxSessionSearches: 20, timeout: 30000, verbose: false
       }, mockExecutor);
       const httpServer = await server.start();
       servers.push(httpServer);
+      const port = (httpServer.address() as import('net').AddressInfo).port;
 
       const res = await request(port, 'POST', '/v1/chat/completions', {
         messages: [{ role: 'user', content: payload }]
@@ -348,13 +344,13 @@ describe('Race conditions', () => {
       return mockClaudeResult(`Result ${callCount}`);
     };
 
-    const port = randomPort();
     const server = new ProxyServer({
-      port, host: '127.0.0.1', model: 'claude-sonnet-4',
+      port: 0, host: '127.0.0.1', model: 'claude-sonnet-4',
       maxSessionSearches: 20, timeout: 30000, verbose: false
     }, mockExecutor);
     const httpServer = await server.start();
     servers.push(httpServer);
+    const port = (httpServer.address() as import('net').AddressInfo).port;
 
     const promises = Array.from({ length: 50 }, (_, i) =>
       request(port, 'POST', '/v1/chat/completions', {
@@ -379,14 +375,14 @@ describe('Race conditions', () => {
       return mockClaudeResult(`Result ${searchCount}`);
     };
 
-    const port = randomPort();
     const server = new ProxyServer({
-      port, host: '127.0.0.1', model: 'claude-sonnet-4',
+      port: 0, host: '127.0.0.1', model: 'claude-sonnet-4',
       maxSessionSearches: 3, // Low threshold to trigger rotation
       timeout: 30000, verbose: false
     }, mockExecutor);
     const httpServer = await server.start();
     servers.push(httpServer);
+    const port = (httpServer.address() as import('net').AddressInfo).port;
 
     // Fire 10 requests — should trigger multiple rotations (every 3 searches)
     const results = [];
