@@ -10,11 +10,6 @@ import http from 'http';
 import type { ProxyConfig, ClaudeResult } from '../src/types.js';
 import { ProxyServer } from '../src/server.js';
 
-// Random port to avoid conflicts
-function randomPort(): number {
-  return 30000 + Math.floor(Math.random() * 30000);
-}
-
 // HTTP request helper
 async function request(
   port: number,
@@ -68,9 +63,8 @@ describe('ProxyServer', () => {
     config: Partial<ProxyConfig> = {},
     mockResult?: ClaudeResult
   ): Promise<{ port: number; server: ProxyServer }> {
-    const port = randomPort();
     const fullConfig: ProxyConfig = {
-      port,
+      port: 0, // OS assigns a free port
       host: '127.0.0.1',
       model: 'claude-sonnet-4',
       maxSessionSearches: 20,
@@ -86,7 +80,8 @@ describe('ProxyServer', () => {
     const httpServer = await server.start();
     servers.push(httpServer);
 
-    return { port, server };
+    const addr = httpServer.address() as import('net').AddressInfo;
+    return { port: addr.port, server };
   }
 
   it('should respond to GET /health', async () => {
@@ -252,9 +247,8 @@ describe('ProxyServer', () => {
   });
 
   it('should return 500 when executor fails', async () => {
-    const port = randomPort();
     const config: ProxyConfig = {
-      port,
+      port: 0,
       host: '127.0.0.1',
       model: 'claude-sonnet-4',
       maxSessionSearches: 20,
@@ -266,6 +260,7 @@ describe('ProxyServer', () => {
     const server = new ProxyServer(config, failExecutor);
     const httpServer = await server.start();
     servers.push(httpServer);
+    const port = (httpServer.address() as import('net').AddressInfo).port;
 
     const res = await request(port, 'POST', '/v1/chat/completions', {
       messages: [{ role: 'user', content: 'test' }]
@@ -320,9 +315,8 @@ describe('ProxyServer', () => {
   // from the never-resolving executor would hang the test suite.
 
   it('should show real error messages to the operator', async () => {
-    const port = randomPort();
     const config: ProxyConfig = {
-      port,
+      port: 0,
       host: '127.0.0.1',
       model: 'claude-sonnet-4',
       maxSessionSearches: 20,
@@ -336,6 +330,7 @@ describe('ProxyServer', () => {
     const server = new ProxyServer(config, failExecutor);
     const httpServer = await server.start();
     servers.push(httpServer);
+    const port = (httpServer.address() as import('net').AddressInfo).port;
 
     const res = await request(port, 'POST', '/v1/chat/completions', {
       messages: [{ role: 'user', content: 'test' }]
